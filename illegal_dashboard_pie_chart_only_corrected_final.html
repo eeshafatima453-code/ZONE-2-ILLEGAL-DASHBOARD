@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Illegal Penalty Dashboard</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+    :root{
+      --navy:#0e2744; --navy2:#14365a; --text:#0f172a; --muted:#64748b;
+      --white:#fff; --border:#dbe4ef; --shadow:0 12px 30px rgba(15,23,42,.10);
+      --radius:20px; --full:#16a34a; --court:#4b2e16; --notpaid:#dc2626;
+      --partial:#2563eb; --approved:#ec4899; --withdrawn:#7c3aed; --unknown:#94a3b8;
+      --grayfill:#cbd5e1; --grayline:#64748b;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;font-family:"Segoe UI",Arial,sans-serif}
+    body{background:linear-gradient(180deg,#f7fafc 0%,#edf3f8 100%);color:var(--text);padding:22px;font-size:13px}
+    .container{max-width:1600px;margin:auto;display:grid;gap:20px}
+    .card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 14px rgba(15,23,42,.06);padding:18px}
+    .header{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;box-shadow:var(--shadow)}
+    .top{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+    .brand-row{display:flex;align-items:center;gap:14px}.lda-logo{width:58px;height:58px;object-fit:contain;background:#fff;border-radius:14px;padding:6px;box-shadow:0 4px 12px rgba(15,23,42,.18)}
+    .logo-fallback{width:58px;height:58px;border-radius:14px;background:white;color:#0e2744;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;box-shadow:0 4px 12px rgba(15,23,42,.18)}
+    h1{font-size:32px;letter-spacing:.2px}.subtitle{color:rgba(255,255,255,.78);font-size:14px;margin-top:5px}.home{color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.25);padding:10px 14px;border-radius:12px;background:rgba(255,255,255,.10);font-weight:700}
+    .filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px}.filter label{display:block;font-size:12px;font-weight:700;margin-bottom:6px;color:rgba(255,255,255,.88)}
+    select,input,button{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--border);font-size:13px;outline:none}button{cursor:pointer;font-weight:800;background:#fff;color:var(--navy)}
+    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}.stat{position:relative;overflow:hidden;border:none;color:white}.stat:nth-child(1){background:linear-gradient(135deg,#7f1d1d,#dc2626)}.stat:nth-child(2){background:linear-gradient(135deg,#0e2744,#1d4976)}.stat:nth-child(3){background:linear-gradient(135deg,#065f46,#16a34a)}.stat:nth-child(4){background:linear-gradient(135deg,#92400e,#d97706)}.stat:nth-child(5){background:linear-gradient(135deg,#831843,#ec4899)}
+    .stat:after{content:"";position:absolute;width:120px;height:120px;border-radius:50%;right:-28px;top:-28px;background:rgba(255,255,255,.1)}.stat-top{display:flex;justify-content:space-between;align-items:center;gap:10px;position:relative;z-index:1}.stat-label{font-size:13px;color:rgba(255,255,255,.82);font-weight:700}.icon{font-size:24px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.22);width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}.stat-value{font-size:30px;font-weight:900;margin-top:8px;position:relative;z-index:1}.stat-note{font-size:12px;color:rgba(255,255,255,.76);margin-top:8px;position:relative;z-index:1}
+    .main{display:grid;grid-template-columns:4.6fr 1.15fr;gap:20px;align-items:start}.map-card{min-height:850px}.map-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}.map-head h2,.panel h2{color:var(--navy);font-size:21px}.muted{color:var(--muted);font-size:13px;margin-top:3px}#map{height:790px;border-radius:22px;border:1px solid #cfe0f0;background:#eef5fb}.side{display:grid;gap:20px}.chart-wrap{height:280px;display:flex;align-items:center;justify-content:center;padding-top:6px}#paymentChart{max-width:270px;max-height:270px}.chart-hint{margin-top:8px;color:#64748b;font-size:12px;line-height:1.35}.legend-list{display:grid;gap:9px;margin-top:12px}.legend-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 11px;border:1px solid var(--border);background:#f8fafc;border-radius:12px;cursor:pointer;transition:.18s ease}.legend-item:hover{transform:translateY(-1px);background:white;box-shadow:0 4px 10px rgba(15,23,42,.06)}.legend-left{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700;color:#334155}.legend-dot{display:inline-block;width:15px;height:15px;border-radius:5px;border:1px solid rgba(15,23,42,.2)}.legend-count{font-weight:900;color:var(--navy);font-size:13px}
+    .btn-row{display:flex;gap:10px;flex-wrap:wrap}.btn{width:auto;background:var(--navy);color:white;border-color:var(--navy);padding:10px 14px;border-radius:12px}.map-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.map-tools button{width:auto;padding:9px 13px;border-radius:11px;border:1px solid var(--border);background:#f8fafc;color:#0e2744;font-weight:900}.map-tools button.active-basemap{background:#0e2744;color:#fff;border-color:#0e2744}.map-tools .btn{background:var(--navy);color:#fff}.spatial-toggle-off{background:#fff!important;color:#7c3aed!important;border-color:#a1a1aa!important}
+    .map-box-wrap{position:relative}.custom-popup-panel{position:absolute;left:18px;bottom:18px;width:375px;max-height:520px;overflow:auto;background:#fff;border:1px solid #dbe4ef;border-radius:16px;box-shadow:0 14px 34px rgba(15,23,42,.22);padding:14px;z-index:99999;display:none;pointer-events:auto;font-size:13px;line-height:1.55}.custom-popup-panel h3{color:#0e2744;font-size:16px;margin-bottom:8px}.custom-popup-close{position:absolute;top:8px;right:10px;width:auto;border:none;background:#f1f5f9;color:#0e2744;border-radius:8px;padding:3px 8px;font-weight:900;cursor:pointer}.popup-row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid #eef2f7;padding:4px 0}.popup-row b{color:#334155;flex-shrink:0}.popup-img{width:100%;max-height:170px;object-fit:cover;border-radius:10px;border:1px solid #cbd5e1;background:#f8fafc;margin-top:8px;cursor:pointer}.popup-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.popup-actions button,.popup-actions a{display:block;text-align:center;text-decoration:none;background:#0e2744;color:#fff;border:1px solid #0e2744;border-radius:10px;padding:9px 10px;font-weight:800}.popup-actions a.notice{background:#d97706;border-color:#d97706}.popup-actions .disabled{background:#e2e8f0!important;color:#64748b!important;border-color:#cbd5e1!important;cursor:not-allowed}
+    .table-wrap{overflow:auto;border:1px solid var(--border);border-radius:16px;max-height:650px}table{width:100%;border-collapse:collapse;background:#fff;font-size:12.5px}th,td{padding:10px 9px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:left}th{background:#eaf2fa;color:var(--navy);font-weight:800;position:sticky;top:0;z-index:2}.badge{padding:5px 9px;border-radius:999px;font-size:12px;font-weight:800;display:inline-block}.badge-full{background:#dcfce7;color:#166534}.badge-court{background:#ede0d4;color:#4b2e16}.badge-notpaid{background:#fee2e2;color:#991b1b}.badge-partial{background:#dbeafe;color:#1e40af}.badge-approved{background:#fce7f3;color:#9d174d}.badge-other{background:#e2e8f0;color:#334155}.badge-withdrawn{background:#ede9fe;color:#5b21b6}
+    .status-line{background:#f8fafc;border:1px solid #dbe4ef;color:#334155;border-radius:12px;padding:10px 12px;margin-top:10px;font-size:13px}.active-filter{display:inline-flex;align-items:center;gap:8px;margin-top:10px;background:#f8fafc;color:#334155;border:1px solid #dbe4ef;border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700}.active-filter button{padding:2px 8px;width:auto;border-radius:999px;border:1px solid #cbd5e1;background:#fff;color:#0e2744;font-size:12px}
+    @media(max-width:1050px){.main{grid-template-columns:1fr}#map{height:620px}.map-card{min-height:auto}.custom-popup-panel{width:calc(100% - 36px)}}
+  </style>
+</head>
+<body>
+<div class="container">
+  <section class="card header">
+    <div class="top">
+      <div class="brand-row">
+        <img id="ldaLogoImg" class="lda-logo" src="lda_logo.png" onerror="this.style.display='none';document.getElementById('ldaLogoFallback').style.display='flex';">
+        <div id="ldaLogoFallback" class="logo-fallback" style="display:none">LDA</div>
+        <div>
+          <h1>Illegal Penalty Dashboard</h1>
+          <div class="subtitle">CSV data linked with JSON plot geometry through UniqueID</div>
+        </div>
+      </div>
+      <a class="home" href="index.html">← Main Page</a>
+    </div>
+    <div class="filters">
+      <div class="filter"><label>Town</label><select id="townFilter"><option value="All">All Towns</option></select></div>
+      <div class="filter"><label>Concerned AD</label><select id="adFilter"><option value="All">All ADs</option></select></div>
+      <div class="filter"><label>Phase</label><select id="phaseFilter"><option value="All">All Phases</option></select></div>
+      <div class="filter"><label>Block</label><select id="blockFilter"><option value="All">All Blocks</option></select></div>
+      <div class="filter"><label>Payment Status</label><select id="statusFilter"><option value="All">All Statuses</option></select></div>
+      <div class="filter"><label>Landuse</label><select id="landuseFilter"><option value="All">All Landuses</option></select></div>
+      <div class="filter"><label>Search Plot / UniqueID</label><input id="searchInput" placeholder="Plot, UniqueID, Key, Join..." /></div>
+      <div class="filter"><label>&nbsp;</label><button onclick="clearFilters()">Clear Filters</button></div>
+    </div>
+    <div id="loadStatus" class="status-line">Loading CSV and JSON files...</div>
+  </section>
+
+  <section class="stats">
+    <div class="card stat"><div class="stat-top"><div class="stat-label">Total CSV Records</div><div class="icon">📋</div></div><div id="totalRecords" class="stat-value">0</div><div class="stat-note">Filtered rows from CSV</div></div>
+    <div class="card stat"><div class="stat-top"><div class="stat-label">Illegal Plots</div><div class="icon">⚠️</div></div><div id="illegalCount" class="stat-value">0</div><div class="stat-note">CSV Landuse = ILLEGAL</div></div>
+    <div class="card stat"><div class="stat-top"><div class="stat-label">Total Amount</div><div class="icon">💰</div></div><div id="totalAmount" class="stat-value">0</div><div class="stat-note">Sum from CSV</div></div>
+    <div class="card stat"><div class="stat-top"><div class="stat-label">Received</div><div class="icon">✅</div></div><div id="receivedAmount" class="stat-value">0</div><div class="stat-note">Payment received</div></div>
+    <div class="card stat"><div class="stat-top"><div class="stat-label">Pending</div><div class="icon">⏳</div></div><div id="pendingAmount" class="stat-value">0</div><div class="stat-note">Outstanding amount</div></div>
+  </section>
+
+  <section class="main">
+    <div class="card map-card">
+      <div class="map-head">
+        <div><h2>Spatial Penalty View</h2><p class="muted">Only one plot popup is displayed at a time. Open Notice and Download Report are available inside the popup.</p><div id="activeStatusBox"></div></div>
+        <div class="btn-row map-tools">
+          <button id="btnOSM" onclick="setBaseMap('osm')" class="active-basemap">Street</button>
+          <button id="btnSatellite" onclick="setBaseMap('satellite')">Satellite</button>
+          <button id="btnSpatialToggle" onclick="toggleSpatialData()">Hide All Spatial Data</button>
+          <button class="btn" onclick="exportTable()">Export CSV</button>
+        </div>
+      </div>
+      <div class="map-box-wrap"><div id="map"></div><div id="customPopup" class="custom-popup-panel"></div></div>
+    </div>
+    <div class="side">
+      <div class="card panel"><h2>Payment Status Chart</h2><p class="muted">Click a donut segment to filter dashboard.</p><div class="chart-wrap"><canvas id="paymentChart"></canvas></div><div class="chart-hint">Click same segment again or Clear Filters to reset.</div></div>
+      <div class="card panel"><h2>Payment Status Legend</h2><p class="muted">Counts are calculated from CSV.</p><div class="legend-list" id="paymentLegend"></div></div>
+      <div class="card panel"><h2>Selected Plot Details</h2><div id="selectedDetails" class="status-line">Click any plot on map or row in table.</div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="map-head"><div><h2>CSV Data Records</h2><p class="muted">This table is populated directly from <b>data(11).csv</b>.</p></div></div>
+    <div style="display:flex;gap:10px;align-items:center;margin:12px 0 14px 0;flex-wrap:wrap">
+      <input id="tableSearchInput" placeholder="Search table data..." style="max-width:360px;background:#fff">
+      <button class="btn" onclick="document.getElementById('tableSearchInput').value='';updateTable(filteredData());">Clear Table Search</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>UniqueID</th><th>Town</th><th>AD</th><th>Phase</th><th>Block</th><th>Plot</th><th>Landuse</th><th>Total</th><th>Received</th><th>Pending</th><th>Payment Status</th><th>Notice Status</th><th>Notice</th><th>Report</th></tr></thead>
+        <tbody id="recordsBody"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+let map, plotLayer, paymentChart, currentBaseLayer;
+let baseLayers = {}, allRows = [], allFeatures = [], featureById = new Map(), csvById = new Map();
+let showSpatialLayer = true;
+let activePaymentStatus = 'All';
+let highlightedLayer = null;
+
+const CSV_FILES = ['data(11).csv','data.csv'];
+const JSON_FILES = ['JSONN(12).json','JSONN.json','plots(2)(1).json','plots(2).json'];
+
+const PAYMENT_RULES = [
+  {key:'Not Paid', label:'Not Paid', color:'#dc2626'},
+  {key:'Full Payment', label:'Full Payment', color:'#16a34a'},
+  {key:'Partial Payment', label:'Partial Payment', color:'#2563eb'},
+  {key:'Court Case', label:'Court Case', color:'#4b2e16'},
+  {key:'Approved', label:'Approved', color:'#ec4899'},
+  {key:'Withdrawn', label:'Withdrawn', color:'#7c3aed'},
+  {key:'Other', label:'Other / Blank', color:'#94a3b8'}
+];
+
+function norm(v){ return (v===null || v===undefined) ? '' : String(v).trim(); }
+function cleanId(v){ const s=norm(v); return /^\d+\.0+$/.test(s) ? s.split('.')[0] : s; }
+function esc(v){ return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function num(v){ const n=parseFloat(norm(v).replace(/,/g,'')); return Number.isFinite(n) ? n : 0; }
+function money(v){ return num(v).toLocaleString(undefined,{maximumFractionDigits:0}); }
+function first(row, keys){ for(const k of keys){ if(row[k] !== undefined && norm(row[k]) !== '') return norm(row[k]); } return ''; }
+function safeFileName(v){ return norm(v).replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'') || 'record'; }
+
+async function fetchFirst(files, type){
+  let lastError = '';
+  for(const file of files){
+    try{
+      const res = await fetch(file + '?v=' + Date.now());
+      if(!res.ok) throw new Error(res.status + ' ' + res.statusText);
+      return {name:file, value: type === 'json' ? await res.json() : await res.text()};
+    }catch(err){ lastError = file + ': ' + err.message; }
+  }
+  throw new Error('Could not load any file. Last error: ' + lastError);
+}
+
+function classifyPaymentStatus(value){
+  const raw = norm(value);
+  const s = raw.toUpperCase().replace(/[\-_]+/g,' ').replace(/\s+/g,' ').trim();
+  if(!s) return 'Other';
+  // Exact priority matters: NOT PAID contains PAID, so it must be checked first.
+  if(/\b(NOT PAID|UNPAID|NON PAID|NO PAYMENT|PAYMENT PENDING|PENDING PAYMENT)\b/.test(s)) return 'Not Paid';
+  if(/\b(PARTIAL|PART PAYMENT|PARTLY PAID)\b/.test(s)) return 'Partial Payment';
+  if(/\b(COURT|LITIGATION|CASE IN COURT)\b/.test(s)) return 'Court Case';
+  if(/\b(WITHDRAWN|WITHDRAW)\b/.test(s)) return 'Withdrawn';
+  if(/\bAPPROVED\b/.test(s)) return 'Approved';
+  if(/\b(FULL PAYMENT|FULL PAID|FULLY PAID|COMPLETE PAYMENT|PAID IN FULL)\b/.test(s) || s === 'PAID') return 'Full Payment';
+  return 'Other';
+}
+function paymentRule(value){ return PAYMENT_RULES.find(r => r.key === classifyPaymentStatus(value)) || PAYMENT_RULES[6]; }
+function badgeClass(value){
+  const k = classifyPaymentStatus(value);
+  if(k==='Full Payment') return 'badge-full'; if(k==='Not Paid') return 'badge-notpaid'; if(k==='Partial Payment') return 'badge-partial';
+  if(k==='Court Case') return 'badge-court'; if(k==='Approved') return 'badge-approved'; if(k==='Withdrawn') return 'badge-withdrawn'; return 'badge-other';
+}
+
+function normalizeRow(row){
+  const item = {
+    raw: row,
+    id: cleanId(first(row, ['UniqueID','Unique ID','ID','FID','Plot_Size'])),
+    fid: first(row, ['FID']),
+    town: first(row, ['Town_Name','Town','Scheme','SCHEME']),
+    sector: first(row, ['Sector']),
+    phase: first(row, ['Phase']),
+    block: first(row, ['Block','Block ']),
+    landuse: first(row, ['Landuse','Land Use']),
+    plot: first(row, ['PlotNo','Plot No','Plot No.','Plot']),
+    key: first(row, ['KEY','Key']),
+    join: first(row, ['JOIN','Join']),
+    noticeStatus: first(row, ['NOTICE STATUS_Z2','Notice Status','NOTICE STATUS']),
+    totalAmount: first(row, ['Total Amount','TOTAL AMOUNT','Amount']),
+    received: first(row, ['Received','Amount Received','Amount Recieved']),
+    pending: first(row, ['Pending','Outstanding Amount','Amount Pending']),
+    paymentStatus: first(row, ['PT-STATUS_Z2','Payment Status','PT STATUS']),
+    concernedAD: first(row, ['CONCERNED AD','Concerned AD','AD']),
+    lat: first(row, ['LATITUDE','Latitude']),
+    lng: first(row, ['LONGITUDE','Longitude']),
+    picture: first(row, ['PROPERTY PIC','Property Pic','Picture','Image','Photo','PROPERTY_PIC']),
+    noticeLink: first(row, ['NOTICE LINK','Notice Link','Notice','NOTICE'])
+  };
+  item.paymentClass = classifyPaymentStatus(item.paymentStatus);
+  return item;
+}
+
+function initMap(){
+  map = L.map('map',{center:[31.52,74.28],zoom:14});
+  baseLayers.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap'});
+  baseLayers.satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,attribution:'Tiles &copy; Esri'});
+  currentBaseLayer = baseLayers.osm; currentBaseLayer.addTo(map);
+  plotLayer = L.layerGroup().addTo(map);
+  map.on('click', function(){ hideCustomPopup(); clearHighlight(); });
+}
+function setBaseMap(type){
+  if(!baseLayers[type] || currentBaseLayer === baseLayers[type]) return;
+  map.removeLayer(currentBaseLayer); currentBaseLayer = baseLayers[type]; currentBaseLayer.addTo(map);
+  document.getElementById('btnOSM').classList.toggle('active-basemap', type==='osm');
+  document.getElementById('btnSatellite').classList.toggle('active-basemap', type==='satellite');
+}
+function toggleSpatialData(){
+  showSpatialLayer = !showSpatialLayer;
+  const btn = document.getElementById('btnSpatialToggle');
+  btn.textContent = showSpatialLayer ? 'Hide All Spatial Data' : 'Show All Spatial Data';
+  btn.classList.toggle('spatial-toggle-off', !showSpatialLayer);
+  updateMap(filteredData());
+}
+
+function populateSelect(id, values, allText){
+  const el = document.getElementById(id);
+  const current = el.value || 'All';
+  const clean = [...new Set(values.map(norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  el.innerHTML = `<option value="All">${esc(allText)}</option>` + clean.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  if(clean.includes(current)) el.value = current;
+}
+function populateFilters(){
+  populateSelect('townFilter', allRows.map(x=>x.town), 'All Towns');
+  populateSelect('adFilter', allRows.map(x=>x.concernedAD), 'All ADs');
+  populateSelect('phaseFilter', allRows.map(x=>x.phase), 'All Phases');
+  populateSelect('blockFilter', allRows.map(x=>x.block), 'All Blocks');
+  populateSelect('statusFilter', allRows.map(x=>x.paymentStatus || x.paymentClass), 'All Statuses');
+  populateSelect('landuseFilter', allRows.map(x=>x.landuse), 'All Landuses');
+  ['townFilter','adFilter','phaseFilter','blockFilter','statusFilter','landuseFilter','searchInput','tableSearchInput'].forEach(id=>{
+    const el = document.getElementById(id); if(el && !el.dataset.bound){ el.addEventListener('input', applyFilters); el.addEventListener('change', applyFilters); el.dataset.bound='1'; }
+  });
+}
+function selected(id){ return document.getElementById(id).value; }
+function textSearch(item, q){
+  return [item.id,item.fid,item.town,item.phase,item.block,item.landuse,item.plot,item.key,item.join,item.noticeStatus,item.paymentStatus,item.concernedAD,item.totalAmount,item.received,item.pending].some(v=>norm(v).toLowerCase().includes(q));
+}
+function baseFilteredData(){
+  const q = norm(document.getElementById('searchInput').value).toLowerCase();
+  return allRows.filter(x =>
+    (selected('townFilter')==='All' || x.town === selected('townFilter')) &&
+    (selected('adFilter')==='All' || x.concernedAD === selected('adFilter')) &&
+    (selected('phaseFilter')==='All' || x.phase === selected('phaseFilter')) &&
+    (selected('blockFilter')==='All' || x.block === selected('blockFilter')) &&
+    (selected('landuseFilter')==='All' || x.landuse === selected('landuseFilter')) &&
+    (selected('statusFilter')==='All' || x.paymentStatus === selected('statusFilter') || x.paymentClass === selected('statusFilter')) &&
+    (!q || textSearch(x,q))
+  );
+}
+function filteredData(){
+  let data = baseFilteredData();
+  if(activePaymentStatus !== 'All') data = data.filter(x => x.paymentClass === activePaymentStatus);
+  return data;
+}
+function clearFilters(){
+  ['townFilter','adFilter','phaseFilter','blockFilter','statusFilter','landuseFilter'].forEach(id=>document.getElementById(id).value='All');
+  document.getElementById('searchInput').value='';
+  document.getElementById('tableSearchInput').value='';
+  activePaymentStatus='All';
+  applyFilters();
+}
+
+function updateStats(data){
+  document.getElementById('totalRecords').textContent = data.length.toLocaleString();
+  document.getElementById('illegalCount').textContent = data.filter(x => norm(x.landuse).toUpperCase()==='ILLEGAL').length.toLocaleString();
+  document.getElementById('totalAmount').textContent = data.reduce((s,x)=>s+num(x.totalAmount),0).toLocaleString();
+  document.getElementById('receivedAmount').textContent = data.reduce((s,x)=>s+num(x.received),0).toLocaleString();
+  document.getElementById('pendingAmount').textContent = data.reduce((s,x)=>s+num(x.pending),0).toLocaleString();
+}
+function paymentCounts(data){
+  const counts = {}; PAYMENT_RULES.forEach(r=>counts[r.key]=0);
+  data.forEach(x => counts[x.paymentClass] = (counts[x.paymentClass] || 0) + 1);
+  return counts;
+}
+
+function isIllegalLanduseItem(item){
+  const csvLanduse = norm(item?.landuse).toUpperCase();
+  const feature = featureById.get(cleanId(item?.id));
+  const jsonLanduse = norm(feature?.properties?.Landuse).toUpperCase();
+  return csvLanduse === 'ILLEGAL' || jsonLanduse === 'ILLEGAL';
+}
+
+function paymentCountsIllegalOnly(data){
+  const counts = {}; PAYMENT_RULES.forEach(r=>counts[r.key]=0);
+  data.forEach(x => {
+    if(isIllegalLanduseItem(x)){
+      counts[x.paymentClass] = (counts[x.paymentClass] || 0) + 1;
+    }
+  });
+  return counts;
+}
+function updateLegend(data){
+  const counts = paymentCounts(data), box = document.getElementById('paymentLegend'); box.innerHTML='';
+  PAYMENT_RULES.forEach(rule=>{
+    const row = document.createElement('div'); row.className='legend-item';
+    row.onclick = () => { activePaymentStatus = activePaymentStatus === rule.key ? 'All' : rule.key; applyFilters(); };
+    row.innerHTML = `<div class="legend-left"><span class="legend-dot" style="background:${rule.color}"></span><span>${esc(rule.label)}</span></div><span class="legend-count">${(counts[rule.key]||0).toLocaleString()}</span>`;
+    box.appendChild(row);
+  });
+}
+function updateChart(data){
+  // PIE CHART FIX: count payment status only for records whose landuse is ILLEGAL.
+  // Uses CSV Landuse first, and also checks linked JSON Landuse by UniqueID for safety.
+  const illegalData = data.filter(isIllegalLanduseItem);
+  const counts = paymentCountsIllegalOnly(data);
+  const labels = PAYMENT_RULES.map(r=>r.label);
+  const keys = PAYMENT_RULES.map(r=>r.key);
+  const values = PAYMENT_RULES.map(r=>counts[r.key]||0);
+  const colors = PAYMENT_RULES.map(r=>r.color);
+  const total = values.reduce((a,b)=>a+b,0);
+  const ctx = document.getElementById('paymentChart');
+  if(paymentChart) paymentChart.destroy();
+
+  paymentChart = new Chart(ctx,{
+    type:'pie',
+    data:{labels,datasets:[{data:values,backgroundColor:colors,borderColor:'#fff',borderWidth:2}]},
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        title:{display:true,text:`Illegal Landuse Only (${illegalData.length.toLocaleString()} plots)`,font:{size:12,weight:'bold'},color:'#0e2744',padding:{bottom:8}},
+        legend:{display:true,position:'bottom',labels:{boxWidth:12,font:{size:11}}},
+        tooltip:{callbacks:{label:function(context){const v=Number(context.parsed||0); const pct=total?((v/total)*100).toFixed(1):'0.0'; return `${context.label}: ${v.toLocaleString()} (${pct}%)`;}}}
+      },
+      onClick:(evt,elements)=>{ if(elements.length){ const key=keys[elements[0].index]; activePaymentStatus = activePaymentStatus === key ? 'All' : key; applyFilters(); }}
+    }
+  });
+}
+function featureIds(feature){
+  const p = feature.properties || {};
+  return [p.UniqueID,p.UniqueId,p['Unique ID'],p.ID,p.FID,feature.id].map(cleanId).filter(Boolean);
+}
+function rowForFeature(feature, sourceMap){
+  for(const id of featureIds(feature)){ if(sourceMap.has(id)) return sourceMap.get(id); }
+  return null;
+}
+function clearHighlight(){ if(highlightedLayer){ try{ highlightedLayer.setStyle({weight: highlightedLayer.options._baseWeight || 1.1}); }catch(e){} highlightedLayer=null; } }
+function updateMap(data){
+  plotLayer.clearLayers(); hideCustomPopup(); clearHighlight();
+  if(!showSpatialLayer) return;
+  const filteredById = new Map(data.map(x=>[cleanId(x.id),x]));
+  const filterActive = data.length !== allRows.length || activePaymentStatus !== 'All';
+  const bounds = [];
+  allFeatures.forEach(feature=>{
+    const rowAny = rowForFeature(feature, csvById);
+    const rowFiltered = rowForFeature(feature, filteredById);
+    if(filterActive && !rowFiltered) return;
+    const row = rowFiltered || rowAny;
+    const p = feature.properties || {};
+    const isIllegal = row ? norm(row.landuse).toUpperCase()==='ILLEGAL' : norm(p.Landuse).toUpperCase()==='ILLEGAL';
+    const color = row && isIllegal ? paymentRule(row.paymentStatus).color : (isIllegal ? '#f59e0b' : '#64748b');
+    const layerGroup = L.geoJSON(feature,{style:{color,weight:row?2.2:1.1,fillColor:row&&isIllegal?color:'#cbd5e1',fillOpacity:row&&isIllegal?.72:.28, _baseWeight:row?2.2:1.1},onEachFeature:(f,l)=>{
+      l.on('click', (e)=>{ L.DomEvent.stopPropagation(e); clearHighlight(); highlightedLayer=l; l.setStyle({weight:5}); showOnePopup(row, feature, l.getBounds().getCenter()); document.getElementById('selectedDetails').innerHTML = row ? detailMini(row) : detailMiniJson(feature); });
+    }}).addTo(plotLayer);
+    layerGroup.eachLayer(l=>{ if(l.getBounds){ bounds.push(l.getBounds()); }});
+  });
+  if(bounds.length){ const b=bounds.reduce((a,c)=>a.extend(c),bounds[0]); map.fitBounds(b,{padding:[30,30],maxZoom:18}); }
+}
+
+function imgBlock(row){
+  const url = norm(row.picture);
+  if(!url) return '';
+  return `<a href="${esc(url)}" target="_blank" rel="noopener"><img class="popup-img" src="${esc(url)}" onerror="this.style.display='none'"></a>`;
+}
+function detailMini(row){
+  return `<b>UniqueID:</b> ${esc(row.id)}<br><b>Plot:</b> ${esc(row.plot||'-')}<br><b>Block:</b> ${esc(row.block||'-')}<br><b>Landuse:</b> ${esc(row.landuse||'-')}<br><b>Status:</b> ${esc(row.paymentStatus||'-')}<br><b>Total:</b> ${money(row.totalAmount)}<br><b>Received:</b> ${money(row.received)}<br><b>Pending:</b> ${money(row.pending)}`;
+}
+function detailMiniJson(feature){
+  const p=feature.properties||{}; return `<b>JSON Plot</b><br><b>UniqueID:</b> ${esc(p.UniqueID||'-')}<br><b>Plot:</b> ${esc(p.PlotNo||'-')}<br><b>Block:</b> ${esc(p.Block||'-')}<br><b>Landuse:</b> ${esc(p.Landuse||'-')}<br><span style="color:#64748b">No linked CSV row found.</span>`;
+}
+function showOnePopup(row, feature, latlng){
+  // One custom popup only: replacing content each click instead of stacking Leaflet popups.
+  const box = document.getElementById('customPopup');
+  if(row){
+    const rule = paymentRule(row.paymentStatus);
+    const notice = norm(row.noticeLink);
+    box.innerHTML = `<button class="custom-popup-close" onclick="hideCustomPopup();clearHighlight();">×</button>
+      <h3>Plot ${esc(row.plot || '-')}</h3>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="width:14px;height:14px;border-radius:4px;background:${rule.color};display:inline-block;border:1px solid rgba(0,0,0,.2)"></span><b>${esc(row.paymentStatus || 'Unknown')}</b></div>
+      <div class="popup-row"><b>UniqueID</b><span>${esc(row.id)}</span></div>
+      <div class="popup-row"><b>Town</b><span>${esc(row.town || '-')}</span></div>
+      <div class="popup-row"><b>Concerned AD</b><span>${esc(row.concernedAD || '-')}</span></div>
+      <div class="popup-row"><b>Phase</b><span>${esc(row.phase || '-')}</span></div>
+      <div class="popup-row"><b>Block</b><span>${esc(row.block || '-')}</span></div>
+      <div class="popup-row"><b>Plot</b><span>${esc(row.plot || '-')}</span></div>
+      <div class="popup-row"><b>Landuse</b><span>${esc(row.landuse || '-')}</span></div>
+      <div class="popup-row"><b>Total Amount</b><span>${money(row.totalAmount)}</span></div>
+      <div class="popup-row"><b>Received</b><span>${money(row.received)}</span></div>
+      <div class="popup-row"><b>Pending</b><span>${money(row.pending)}</span></div>
+      <div class="popup-row"><b>Notice Status</b><span>${esc(row.noticeStatus || '-')}</span></div>
+      ${imgBlock(row)}
+      <div class="popup-actions">
+        ${notice ? `<a class="notice" href="${esc(notice)}" target="_blank" rel="noopener">Open Notice</a>` : `<button class="disabled" disabled>No Notice</button>`}
+        <button onclick="downloadPlotReport('${esc(row.id)}')">Download Report</button>
+      </div>`;
+  }else{
+    box.innerHTML = `<button class="custom-popup-close" onclick="hideCustomPopup();clearHighlight();">×</button>${detailMiniJson(feature)}`;
+  }
+  box.style.display='block';
+  if(latlng) map.panTo(latlng);
+}
+function hideCustomPopup(){ const box=document.getElementById('customPopup'); box.style.display='none'; box.innerHTML=''; }
+
+function updateTable(data){
+  const body=document.getElementById('recordsBody'); const q=norm(document.getElementById('tableSearchInput').value).toLowerCase();
+  let rows=data; if(q) rows=data.filter(x=>Object.values(x.raw).some(v=>norm(v).toLowerCase().includes(q)) || textSearch(x,q));
+  body.innerHTML='';
+  if(!rows.length){ body.innerHTML='<tr><td colspan="14" style="text-align:center;padding:22px;color:#64748b">No CSV records found.</td></tr>'; return; }
+  rows.slice(0,5000).forEach(x=>{
+    const tr=document.createElement('tr'); tr.style.cursor='pointer'; tr.onclick=()=>{ const f=featureById.get(cleanId(x.id)); if(f){ updateMap([x]); setTimeout(()=>{ const rowLayer = null; showOnePopup(x, f, null); document.getElementById('selectedDetails').innerHTML=detailMini(x); },50); } else { showOnePopup(x, null, null); document.getElementById('selectedDetails').innerHTML=detailMini(x); } };
+    const notice = norm(x.noticeLink);
+    tr.innerHTML = `<td>${esc(x.id)}</td><td>${esc(x.town)}</td><td>${esc(x.concernedAD)}</td><td>${esc(x.phase)}</td><td>${esc(x.block)}</td><td>${esc(x.plot)}</td><td>${esc(x.landuse)}</td><td>${money(x.totalAmount)}</td><td>${money(x.received)}</td><td>${money(x.pending)}</td><td><span class="badge ${badgeClass(x.paymentStatus)}">${esc(x.paymentStatus||'Blank')}</span></td><td>${esc(x.noticeStatus||'-')}</td><td>${notice?`<a href="${esc(notice)}" target="_blank" onclick="event.stopPropagation()">Open Notice</a>`:'-'}</td><td><button onclick="event.stopPropagation();downloadPlotReport('${esc(x.id)}')" style="padding:6px 8px;border-radius:8px">Report</button></td>`;
+    body.appendChild(tr);
+  });
+}
+function applyFilters(){ const data=filteredData(); updateStats(data); updateLegend(baseFilteredData()); updateChart(baseFilteredData()); updateTable(data); updateMap(data); document.getElementById('activeStatusBox').innerHTML = activePaymentStatus==='All' ? '' : `<span class="active-filter">Payment Status: ${esc(activePaymentStatus)} <button onclick="activePaymentStatus='All';applyFilters();">×</button></span>`; }
+
+function addPageFooter(doc){
+  const pages = doc.internal.getNumberOfPages();
+  for(let i=1;i<=pages;i++){
+    doc.setPage(i);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100,116,139);
+    doc.text(`Generated by Illegal Penalty Dashboard | Page ${i} of ${pages}`, 40, 815);
+  }
+}
+
+function drawReportHeader(doc, row){
+  doc.setFillColor(14,39,68);
+  doc.rect(0,0,595,86,'F');
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(18);
+  doc.text('Illegal Penalty Plot Report',40,34);
+  doc.setFontSize(10);
+  doc.setFont('helvetica','normal');
+  doc.text('CSV-based penalty record linked with JSON plot geometry by UniqueID',40,54);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(20);
+  doc.text('LDA',515,42);
+  doc.setFontSize(8);
+  doc.text(new Date().toLocaleString(),40,72);
+}
+
+function drawSectionTitle(doc, title, y){
+  doc.setFillColor(234,242,250);
+  doc.setDrawColor(219,228,239);
+  doc.roundedRect(40,y,515,24,6,6,'FD');
+  doc.setTextColor(14,39,68);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(11);
+  doc.text(title,52,y+16);
+}
+
+function drawInfoGrid(doc, pairs, y){
+  const colW = 247;
+  const rowH = 22;
+  pairs.forEach((p,idx)=>{
+    const col = idx % 2;
+    const row = Math.floor(idx/2);
+    const x = 40 + (col * 268);
+    const yy = y + (row * rowH);
+    doc.setFillColor(idx % 4 < 2 ? 248 : 255,250,252);
+    doc.setDrawColor(226,232,240);
+    doc.rect(x,yy,colW,rowH,'FD');
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(51,65,85);
+    doc.text(String(p[0]),x+7,yy+9);
+    doc.setFont('helvetica','normal');
+    doc.setTextColor(15,23,42);
+    const val = doc.splitTextToSize(String(p[1] || '-'), colW-14);
+    doc.text(val[0] || '-',x+7,yy+18);
+  });
+  return y + Math.ceil(pairs.length/2)*rowH + 14;
+}
+
+function drawAmountCards(doc, row, y){
+  const cards = [
+    ['Total Amount', money(row.totalAmount), [14,39,68]],
+    ['Received', money(row.received), [22,163,74]],
+    ['Pending', money(row.pending), [217,119,6]],
+    ['Payment Status', row.paymentStatus || '-', [220,38,38]]
+  ];
+  const w = 121, h = 48;
+  cards.forEach((c,i)=>{
+    const x = 40 + i*131;
+    doc.setFillColor(c[2][0],c[2][1],c[2][2]);
+    doc.roundedRect(x,y,w,h,8,8,'F');
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8.5);
+    doc.text(c[0],x+10,y+16);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(12);
+    const lines = doc.splitTextToSize(String(c[1]),w-20);
+    doc.text(lines,x+10,y+34);
+  });
+  return y + h + 18;
+}
+
+function downloadPlotReport(id){
+  const row = csvById.get(cleanId(id));
+  if(!row){ alert('No CSV record found for this plot.'); return; }
+  const raw = row.raw || {};
+  try{
+    const { jsPDF } = window.jspdf || {};
+    if(jsPDF){
+      const doc = new jsPDF({orientation:'p',unit:'pt',format:'a4'});
+      drawReportHeader(doc,row);
+      let y = 108;
+
+      drawSectionTitle(doc,'1. Plot Summary',y); y += 34;
+      y = drawInfoGrid(doc,[
+        ['UniqueID', row.id || '-'],
+        ['Plot No.', row.plot || '-'],
+        ['Town / Scheme', row.town || '-'],
+        ['Concerned AD', row.concernedAD || '-'],
+        ['Phase', row.phase || '-'],
+        ['Block', row.block || '-'],
+        ['Landuse', row.landuse || '-'],
+        ['Notice Status', row.noticeStatus || '-']
+      ],y);
+
+      drawSectionTitle(doc,'2. Payment Summary',y); y += 34;
+      y = drawAmountCards(doc,row,y);
+
+      drawSectionTitle(doc,'3. Complete CSV Record',y); y += 34;
+      const entries = Object.entries(raw).filter(([k])=>String(k).trim());
+      entries.forEach(([k,v],idx)=>{
+        if(y > 770){ doc.addPage(); drawReportHeader(doc,row); y=108; drawSectionTitle(doc,'3. Complete CSV Record (continued)',y); y+=34; }
+        const key = String(k).replace(/\s+/g,' ').trim();
+        const val = String(v ?? '').replace(/\s+/g,' ').trim() || '-';
+        const lines = doc.splitTextToSize(val, 340);
+        const h = Math.max(24, lines.length*11 + 10);
+        doc.setFillColor(idx%2===0 ? 248 : 255,250,252);
+        doc.setDrawColor(226,232,240);
+        doc.rect(40,y,515,h,'FD');
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(51,65,85);
+        doc.text(doc.splitTextToSize(key, 145),48,y+13);
+        doc.setFont('helvetica','normal');
+        doc.setTextColor(15,23,42);
+        doc.text(lines,205,y+13);
+        y += h;
+      });
+
+      const notice = norm(row.noticeLink);
+      if(notice){
+        if(y > 735){ doc.addPage(); drawReportHeader(doc,row); y=108; }
+        drawSectionTitle(doc,'4. Notice Link',y); y += 34;
+        doc.setFont('helvetica','normal');
+        doc.setFontSize(9);
+        doc.setTextColor(37,99,235);
+        const nLines = doc.splitTextToSize(notice,515);
+        doc.text(nLines,40,y);
+      }
+
+      addPageFooter(doc);
+      doc.save(`Plot_${safeFileName(row.id)}_Formatted_Report.pdf`);
+      return;
+    }
+  }catch(e){ console.warn('PDF fallback', e); }
+
+  let text = 'ILLEGAL PENALTY PLOT REPORT\n================================\n\n';
+  text += `UniqueID: ${row.id || '-'}\nPlot: ${row.plot || '-'}\nTown: ${row.town || '-'}\nBlock: ${row.block || '-'}\nPayment Status: ${row.paymentStatus || '-'}\n\n`;
+  text += 'COMPLETE CSV RECORD\n-------------------\n';
+  Object.entries(raw).forEach(([k,v])=> text += `${k}: ${v ?? ''}\n`);
+  const blob = new Blob([text], {type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`Plot_${safeFileName(row.id)}_Report.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportTable(){
+  const data = filteredData();
+  const headers = Object.keys(data[0]?.raw || {});
+  const csv = [headers.join(',')].concat(data.map(x => headers.map(h => '"' + String(x.raw[h] ?? '').replace(/"/g,'""') + '"').join(','))).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='filtered_illegal_penalty_records.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
+
+async function boot(){
+  initMap();
+  try{
+    const [csvFile, jsonFile] = await Promise.all([fetchFirst(CSV_FILES,'text'), fetchFirst(JSON_FILES,'json')]);
+    const parsed = Papa.parse(csvFile.value, {header:true, skipEmptyLines:true, dynamicTyping:false});
+    allRows = parsed.data.map(normalizeRow).filter(x=>x.id);
+    csvById = new Map(allRows.map(x=>[cleanId(x.id),x]));
+    allFeatures = (jsonFile.value.features || []);
+    featureById = new Map();
+    allFeatures.forEach(f=>{ featureIds(f).forEach(id=>{ if(!featureById.has(id)) featureById.set(id,f); }); });
+    populateFilters();
+    document.getElementById('loadStatus').innerHTML = `Loaded <b>${esc(csvFile.name)}</b> with <b>${allRows.length.toLocaleString()}</b> CSV rows and <b>${esc(jsonFile.name)}</b> with <b>${allFeatures.length.toLocaleString()}</b> JSON plots. Linked by <b>CSV UniqueID → JSON UniqueID</b>.`;
+    applyFilters();
+  }catch(err){
+    document.getElementById('loadStatus').innerHTML = `<b style="color:#fecaca">Loading error:</b> ${esc(err.message)}<br>Keep this HTML, <b>data(11).csv</b>, and <b>JSONN(12).json</b> in the same folder and open with Live Server.`;
+    console.error(err);
+  }
+}
+boot();
+</script>
+</body>
+</html>
